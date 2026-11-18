@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Neon Courier</title>
+
+<style>
+    * {
+      box-sizing: border-box;
+    }
+
+body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: #080d1d;
+      color: white;
+      font-family: Arial, sans-serif;
+      text-align: center;
+    }
+
+.game-container {
+      width: 95%;
+      max-width: 900px;
+    }
+
+h1 {
+      color: #41e6ff;
+      letter-spacing: 3px;
+    }
+
+.info {
+      display: flex;
+      justify-content: space-around;
+      margin: 15px 0;
+      color: #ffd166;
+      font-size: 18px;
+      font-weight: bold;
+    }
+
+canvas {
+      width: 100%;
+      border: 3px solid #315a9b;
+      border-radius: 12px;
+      background: #0d1633;
+    }
+
+button {
+      margin-top: 15px;
+      padding: 12px 25px;
+      border: none;
+      border-radius: 8px;
+      background: #ff4fa3;
+      color: white;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+button:hover {
+      background: #e63888;
+    }
+
+#message {
+      color: #b8c9ed;
+      margin-top: 12px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="game-container">
+    <h1>NEON COURIER</h1>
+
+<div class="info">
+      <div>Cores: <span id="cores">0</span>/5</div>
+      <div>Time: <span id="time">60</span></div>
+      <div>Score: <span id="score">0</span></div>
+    </div>
+
+<canvas id="gameCanvas" width="900" height="520"></canvas>
+
+<p id="message">
+      Collect all five energy cores and reach the exit.
+    </p>
+
+<button onclick="restartGame()">Restart Game</button>
+  </div>
+
+<script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+
+const coresText = document.getElementById("cores");
+    const timeText = document.getElementById("time");
+    const scoreText = document.getElementById("score");
+    const message = document.getElementById("message");
+
+const keys = {};
+
+let player;
+    let cores;
+    let enemies;
+    let exit;
+    let score;
+    let time;
+    let gameRunning;
+    let lastTime;
+
+document.addEventListener("keydown", function(event) {
+      keys[event.key.toLowerCase()] = true;
+    });
+
+document.addEventListener("keyup", function(event) {
+      keys[event.key.toLowerCase()] = false;
+    });
+
+function restartGame() {
+      player = {
+        x: 70,
+        y: 450,
+        radius: 15,
+        speed: 240
+      };
+
+cores = [
+        { x: 160, y: 100, radius: 11 },
+        { x: 400, y: 100, radius: 11 },
+        { x: 730, y: 110, radius: 11 },
+        { x: 270, y: 380, radius: 11 },
+        { x: 650, y: 390, radius: 11 }
+      ];
+
+enemies = [
+        { x: 300, y: 250, radius: 17, speedX: 130, speedY: 0 },
+        { x: 570, y: 250, radius: 17, speedX: 0, speedY: 130 },
+        { x: 780, y: 300, radius: 17, speedX: -120, speedY: 0 }
+      ];
+
+exit = {
+        x: 830,
+        y: 450,
+        radius: 25
+      };
+
+score = 0;
+      time = 60;
+      gameRunning = true;
+      lastTime = performance.now();
+
+message.textContent =
+        "Collect all five energy cores and reach the exit.";
+
+requestAnimationFrame(gameLoop);
+    }
+
+function distance(object1, object2) {
+      return Math.hypot(
+        object1.x - object2.x,
+        object1.y - object2.y
+      );
+    }
+
+function update(deltaTime) {
+      let moveX = 0;
+      let moveY = 0;
+
+if (keys["arrowright"] || keys["d"]) moveX++;
+      if (keys["arrowleft"] || keys["a"]) moveX--;
+      if (keys["arrowdown"] || keys["s"]) moveY++;
+      if (keys["arrowup"] || keys["w"]) moveY--;
+
+if (moveX !== 0 || moveY !== 0) {
+        const length = Math.hypot(moveX, moveY);
+
+player.x += (moveX / length) * player.speed * deltaTime;
+        player.y += (moveY / length) * player.speed * deltaTime;
+      }
+
+player.x = Math.max(30, Math.min(canvas.width - 30, player.x));
+      player.y = Math.max(30, Math.min(canvas.height - 30, player.y));
+
+time -= deltaTime;
+
+enemies.forEach(enemy => {
+        enemy.x += enemy.speedX * deltaTime;
+        enemy.y += enemy.speedY * deltaTime;
+
+if (enemy.x < 35 || enemy.x > canvas.width - 35) {
+          enemy.speedX *= -1;
+        }
+
+if (enemy.y < 35 || enemy.y > canvas.height - 35) {
+          enemy.speedY *= -1;
+        }
+      });
+
+cores = cores.filter(core => {
+        if (distance(player, core) < player.radius + core.radius) {
+          score += 100;
+          return false;
+        }
+
+return true;
+      });
+
+if (
+        enemies.some(enemy =>
+          distance(player, enemy) <
+          player.radius + enemy.radius
+        )
+      ) {
+        gameOver("A security drone caught you!");
+      }
+
+if (time <= 0) {
+        gameOver("Time ran out!");
+      }
+
+if (
+        cores.length === 0 &&
+        distance(player, exit) < player.radius + exit.radius
+      ) {
+        score += Math.ceil(time) * 10;
+        gameRunning = false;
+        message.textContent =
+          "DELIVERY COMPLETE! You won the game.";
+      }
+    }
+
+function gameOver(text) {
+      gameRunning = false;
+      message.textContent = text + " Press Restart Game to try again.";
+    }
+
+function drawCircle(object, color) {
+      ctx.beginPath();
+      ctx.arc(
+        object.x,
+        object.y,
+        object.radius,
+        0,
+        Math.PI * 2
+      );
+      ctx.fillStyle = color;
+      ctx.fill();
+    }
+
+function drawGame() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+ctx.fillStyle = "#0d1633";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+ctx.strokeStyle = "#172956";
+      ctx.lineWidth = 1;
+
+for (let x = 0; x < canvas.width; x += 40) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+      }
+
+for (let y = 0; y < canvas.height; y += 40) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+      }
+
+ctx.beginPath();
+      ctx.arc(exit.x, exit.y, exit.radius, 0, Math.PI * 2);
+      ctx.fillStyle = cores.length === 0 ? "#19e0e0" : "#16445a";
+      ctx.fill();
+
+ctx.strokeStyle = "#41e6ff";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+cores.forEach(core => {
+        drawCircle(core, "#ffd166");
+      });
+
+enemies.forEach(enemy => {
+        drawCircle(enemy, "#ff4565");
+      });
+
+drawCircle(player, "#41e6ff");
+
+coresText.textContent = 5 - cores.length;
+      timeText.textContent = Math.max(0, Math.ceil(time));
+      scoreText.textContent = score;
+
+if (!gameRunning) {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.65)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 35px Arial";
+        ctx.textAlign = "center";
+
+ctx.fillText(
+          cores.length === 0 && time > 0
+            ? "DELIVERY COMPLETE"
+            : "MISSION FAILED",
+          canvas.width / 2,
+          canvas.height / 2
+        );
+      }
+    }
+
+function gameLoop(currentTime) {
+      const deltaTime = Math.min(
+        0.05,
+        (currentTime - lastTime) / 1000
+      );
+
+lastTime = currentTime;
+
+if (gameRunning) {
+        update(deltaTime);
+      }
+
+drawGame();
+
+if (gameRunning) {
+        requestAnimationFrame(gameLoop);
+      }
+    }
+
+restartGame();
+  </script>
+</body>
+</html>
