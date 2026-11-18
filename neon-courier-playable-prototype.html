@@ -22,7 +22,7 @@ body {
       text-align: center;
     }
 
-.game-container {
+.game {
       width: 95%;
       max-width: 900px;
     }
@@ -35,126 +35,215 @@ h1 {
 .info {
       display: flex;
       justify-content: space-around;
+      flex-wrap: wrap;
+      gap: 8px;
       margin: 15px 0;
       color: #ffd166;
-      font-size: 18px;
       font-weight: bold;
+    }
+
+.info span {
+      color: white;
     }
 
 canvas {
       width: 100%;
+      display: block;
       border: 3px solid #315a9b;
       border-radius: 12px;
       background: #0d1633;
     }
 
 button {
-      margin-top: 15px;
-      padding: 12px 25px;
+      margin: 10px 4px 0;
+      padding: 11px 20px;
       border: none;
       border-radius: 8px;
       background: #ff4fa3;
       color: white;
-      font-size: 16px;
       font-weight: bold;
       cursor: pointer;
     }
 
 button:hover {
-      background: #e63888;
+      background: #d93685;
     }
 
 #message {
       color: #b8c9ed;
-      margin-top: 12px;
+      min-height: 22px;
+    }
+
+.hint {
+      color: #9aaed8;
+      font-size: 14px;
     }
   </style>
 </head>
 
 <body>
-  <div class="game-container">
+  <main class="game">
     <h1>NEON COURIER</h1>
 
 <div class="info">
-      <div>Cores: <span id="cores">0</span>/5</div>
+      <div>Level: <span id="level">1</span>/3</div>
+      <div>Cores: <span id="cores">0</span>/<span id="total">5</span></div>
       <div>Time: <span id="time">60</span></div>
       <div>Score: <span id="score">0</span></div>
+      <div>Best: <span id="best">0</span></div>
     </div>
 
 <canvas id="gameCanvas" width="900" height="520"></canvas>
 
-<p id="message">
-      Collect all five energy cores and reach the exit.
-    </p>
+<p id="message">Press Start to begin your mission.</p>
 
-<button onclick="restartGame()">Restart Game</button>
-  </div>
+<button id="startBtn">Start Game</button>
+    <button id="pauseBtn">Pause</button>
+    <button id="restartBtn">Restart</button>
+
+<p class="hint">
+      Move: WASD or arrow keys • P: pause/resume •
+      Progress and best score save automatically
+    </p>
+  </main>
 
 <script>
     const canvas = document.getElementById("gameCanvas");
     const ctx = canvas.getContext("2d");
 
-const coresText = document.getElementById("cores");
-    const timeText = document.getElementById("time");
-    const scoreText = document.getElementById("score");
-    const message = document.getElementById("message");
+const ui = {
+      level: document.getElementById("level"),
+      cores: document.getElementById("cores"),
+      total: document.getElementById("total"),
+      time: document.getElementById("time"),
+      score: document.getElementById("score"),
+      best: document.getElementById("best"),
+      message: document.getElementById("message")
+    };
 
-const keys = {};
-
-let player;
+let keys = {};
+    let player;
     let cores;
     let enemies;
     let exit;
-    let score;
-    let time;
-    let gameRunning;
-    let lastTime;
+    let level = 1;
+    let score = 0;
+    let time = 60;
+    let state = "start";
+    let lastTime = 0;
 
-document.addEventListener("keydown", function(event) {
-      keys[event.key.toLowerCase()] = true;
+const maxLevel = 3;
+
+let bestScore = Number(
+      localStorage.getItem("neonCourierBestScore") || 0
+    );
+
+let unlockedLevel = Math.max(
+      1,
+      Math.min(
+        maxLevel,
+        Number(localStorage.getItem("neonCourierLevel") || 1)
+      )
+    );
+
+ui.best.textContent = bestScore;
+
+document.addEventListener("keydown", event => {
+      const key = event.key.toLowerCase();
+
+keys[key] = true;
+
+if (
+        ["arrowup", "arrowdown", "arrowleft", "arrowright", " "]
+          .includes(key)
+      ) {
+        event.preventDefault();
+      }
+
+if (key === "p") {
+        togglePause();
+      }
     });
 
-document.addEventListener("keyup", function(event) {
+document.addEventListener("keyup", event => {
       keys[event.key.toLowerCase()] = false;
     });
 
-function restartGame() {
-      player = {
-        x: 70,
-        y: 450,
+document.getElementById("startBtn").onclick = () => {
+      startGame(1);
+    };
+
+document.getElementById("pauseBtn").onclick = togglePause;
+
+document.getElementById("restartBtn").onclick = () => {
+      startGame(level);
+    };
+
+function startGame(selectedLevel = 1) {
+      level = Math.max(1, Math.min(maxLevel, selectedLevel));
+
+if (selectedLevel === 1) {
+        score = 0;
+      }
+
+time = 60 - (level - 1) * 8;
+
+const totalCores = 4 + level;
+
+player = {
+        x: 65,
+        y: canvas.height - 65,
         radius: 15,
-        speed: 240
+        speed: 235
       };
 
-cores = [
-        { x: 160, y: 100, radius: 11 },
-        { x: 400, y: 100, radius: 11 },
-        { x: 730, y: 110, radius: 11 },
-        { x: 270, y: 380, radius: 11 },
-        { x: 650, y: 390, radius: 11 }
-      ];
-
-enemies = [
-        { x: 300, y: 250, radius: 17, speedX: 130, speedY: 0 },
-        { x: 570, y: 250, radius: 17, speedX: 0, speedY: 130 },
-        { x: 780, y: 300, radius: 17, speedX: -120, speedY: 0 }
-      ];
-
 exit = {
-        x: 830,
-        y: 450,
+        x: canvas.width - 65,
+        y: canvas.height - 65,
         radius: 25
       };
 
-score = 0;
-      time = 60;
-      gameRunning = true;
-      lastTime = performance.now();
+cores = [];
 
-message.textContent =
-        "Collect all five energy cores and reach the exit.";
+for (let i = 0; i < totalCores; i++) {
+        cores.push({
+          x: 100 + (i * 137) % 700,
+          y: 75 + ((i * 83 + level * 47) % 330),
+          radius: 11
+        });
+      }
 
-requestAnimationFrame(gameLoop);
+enemies = [];
+
+for (let i = 0; i < 2 + level; i++) {
+        enemies.push({
+          x: 180 + i * 190,
+          y: 120 + (i % 2) * 230,
+          radius: 17,
+          speedX: (i % 2 ? -1 : 1) * (100 + level * 25),
+          speedY: i % 2 ? 100 + level * 15 : 0
+        });
+      }
+
+state = "playing";
+      ui.message.textContent =
+        "Collect the cores, then reach the exit.";
+
+lastTime = performance.now();
+      requestAnimationFrame(gameLoop);
+    }
+
+function togglePause() {
+      if (state === "playing") {
+        state = "paused";
+        ui.message.textContent =
+          "Paused. Press P or Pause to resume.";
+      } else if (state === "paused") {
+        state = "playing";
+        ui.message.textContent = "Mission resumed.";
+        lastTime = performance.now();
+        requestAnimationFrame(gameLoop);
+      }
     }
 
 function distance(object1, object2) {
@@ -168,20 +257,30 @@ function update(deltaTime) {
       let moveX = 0;
       let moveY = 0;
 
-if (keys["arrowright"] || keys["d"]) moveX++;
-      if (keys["arrowleft"] || keys["a"]) moveX--;
-      if (keys["arrowdown"] || keys["s"]) moveY++;
-      if (keys["arrowup"] || keys["w"]) moveY--;
+if (keys.arrowright || keys.d) moveX++;
+      if (keys.arrowleft || keys.a) moveX--;
+      if (keys.arrowdown || keys.s) moveY++;
+      if (keys.arrowup || keys.w) moveY--;
 
 if (moveX !== 0 || moveY !== 0) {
         const length = Math.hypot(moveX, moveY);
 
-player.x += (moveX / length) * player.speed * deltaTime;
-        player.y += (moveY / length) * player.speed * deltaTime;
+player.x +=
+          (moveX / length) * player.speed * deltaTime;
+
+player.y +=
+          (moveY / length) * player.speed * deltaTime;
       }
 
-player.x = Math.max(30, Math.min(canvas.width - 30, player.x));
-      player.y = Math.max(30, Math.min(canvas.height - 30, player.y));
+player.x = Math.max(
+        28,
+        Math.min(canvas.width - 28, player.x)
+      );
+
+player.y = Math.max(
+        28,
+        Math.min(canvas.height - 28, player.y)
+      );
 
 time -= deltaTime;
 
@@ -189,17 +288,26 @@ enemies.forEach(enemy => {
         enemy.x += enemy.speedX * deltaTime;
         enemy.y += enemy.speedY * deltaTime;
 
-if (enemy.x < 35 || enemy.x > canvas.width - 35) {
+if (
+          enemy.x < 35 ||
+          enemy.x > canvas.width - 35
+        ) {
           enemy.speedX *= -1;
         }
 
-if (enemy.y < 35 || enemy.y > canvas.height - 35) {
+if (
+          enemy.y < 35 ||
+          enemy.y > canvas.height - 35
+        ) {
           enemy.speedY *= -1;
         }
       });
 
 cores = cores.filter(core => {
-        if (distance(player, core) < player.radius + core.radius) {
+        if (
+          distance(player, core) <
+          player.radius + core.radius
+        ) {
           score += 100;
           return false;
         }
@@ -213,50 +321,94 @@ if (
           player.radius + enemy.radius
         )
       ) {
-        gameOver("A security drone caught you!");
-      }
-
-if (time <= 0) {
-        gameOver("Time ran out!");
-      }
-
-if (
+        finishGame(false, "A security drone caught you!");
+      } else if (time <= 0) {
+        finishGame(false, "Time ran out!");
+      } else if (
         cores.length === 0 &&
-        distance(player, exit) < player.radius + exit.radius
+        distance(player, exit) <
+          player.radius + exit.radius
       ) {
-        score += Math.ceil(time) * 10;
-        gameRunning = false;
-        message.textContent =
-          "DELIVERY COMPLETE! You won the game.";
+        if (level < maxLevel) {
+          score += Math.ceil(time) * 10;
+
+unlockedLevel = Math.max(
+            unlockedLevel,
+            level + 1
+          );
+
+localStorage.setItem(
+            "neonCourierLevel",
+            unlockedLevel
+          );
+
+ui.message.textContent =
+            "Level complete! Loading the next level...";
+
+state = "transition";
+
+setTimeout(() => {
+            if (state === "transition") {
+              startGame(level + 1);
+            }
+          }, 900);
+        } else {
+          score += Math.ceil(time) * 10;
+
+finishGame(
+            true,
+            "All levels complete! You are the Neon Courier champion."
+          );
+        }
       }
     }
 
-function gameOver(text) {
-      gameRunning = false;
-      message.textContent = text + " Press Restart Game to try again.";
+function finishGame(won, text) {
+      state = won ? "victory" : "gameover";
+
+bestScore = Math.max(bestScore, score);
+
+localStorage.setItem(
+        "neonCourierBestScore",
+        bestScore
+      );
+
+ui.message.textContent =
+        text + " Press Restart to play again.";
     }
 
 function drawCircle(object, color) {
       ctx.beginPath();
-      ctx.arc(
+
+ctx.arc(
         object.x,
         object.y,
         object.radius,
         0,
         Math.PI * 2
       );
-      ctx.fillStyle = color;
+
+ctx.fillStyle = color;
       ctx.fill();
     }
 
 function drawGame() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.clearRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+      );
 
 ctx.fillStyle = "#0d1633";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+      );
 
 ctx.strokeStyle = "#172956";
-      ctx.lineWidth = 1;
 
 for (let x = 0; x < canvas.width; x += 40) {
         ctx.beginPath();
@@ -273,9 +425,19 @@ for (let y = 0; y < canvas.height; y += 40) {
       }
 
 ctx.beginPath();
-      ctx.arc(exit.x, exit.y, exit.radius, 0, Math.PI * 2);
-      ctx.fillStyle = cores.length === 0 ? "#19e0e0" : "#16445a";
-      ctx.fill();
+
+ctx.arc(
+        exit.x,
+        exit.y,
+        exit.radius,
+        0,
+        Math.PI * 2
+      );
+
+ctx.fillStyle =
+        cores.length > 0 ? "#16445a" : "#19e0e0";
+
+ctx.fill();
 
 ctx.strokeStyle = "#41e6ff";
       ctx.lineWidth = 3;
@@ -291,22 +453,58 @@ enemies.forEach(enemy => {
 
 drawCircle(player, "#41e6ff");
 
-coresText.textContent = 5 - cores.length;
-      timeText.textContent = Math.max(0, Math.ceil(time));
-      scoreText.textContent = score;
+ui.level.textContent = level;
+      ui.cores.textContent =
+        4 + level - cores.length;
+      ui.total.textContent = 4 + level;
+      ui.time.textContent = Math.max(
+        0,
+        Math.ceil(time)
+      );
+      ui.score.textContent = score;
+      ui.best.textContent = bestScore;
 
-if (!gameRunning) {
-        ctx.fillStyle = "rgba(0, 0, 0, 0.65)";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+if (
+        state === "start" ||
+        state === "paused" ||
+        state === "gameover" ||
+        state === "victory"
+      ) {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.68)";
 
-ctx.fillStyle = "#ffffff";
-        ctx.font = "bold 35px Arial";
+ctx.fillRect(
+          0,
+          0,
+          canvas.width,
+          canvas.height
+        );
+
+ctx.fillStyle =
+          state === "victory"
+            ? "#41e6ff"
+            : state === "gameover"
+            ? "#ff7898"
+            : "#ffffff";
+
+ctx.font = "bold 34px Arial";
         ctx.textAlign = "center";
 
+let title = "NEON COURIER";
+
+if (state === "paused") {
+          title = "PAUSED";
+        }
+
+if (state === "gameover") {
+          title = "MISSION FAILED";
+        }
+
+if (state === "victory") {
+          title = "MISSION COMPLETE";
+        }
+
 ctx.fillText(
-          cores.length === 0 && time > 0
-            ? "DELIVERY COMPLETE"
-            : "MISSION FAILED",
+          title,
           canvas.width / 2,
           canvas.height / 2
         );
@@ -314,25 +512,47 @@ ctx.fillText(
     }
 
 function gameLoop(currentTime) {
-      const deltaTime = Math.min(
+      if (state !== "playing") {
+        drawGame();
+        return;
+      }
+
+const deltaTime = Math.min(
         0.05,
         (currentTime - lastTime) / 1000
       );
 
 lastTime = currentTime;
 
-if (gameRunning) {
-        update(deltaTime);
-      }
+update(deltaTime);
+      drawGame();
 
-drawGame();
-
-if (gameRunning) {
+if (state === "playing") {
         requestAnimationFrame(gameLoop);
       }
     }
 
-restartGame();
+function initializeGame() {
+      player = {
+        x: 65,
+        y: 455,
+        radius: 15
+      };
+
+exit = {
+        x: 835,
+        y: 455,
+        radius: 25
+      };
+
+cores = [];
+      enemies = [];
+      time = 60;
+
+drawGame();
+    }
+
+initializeGame();
   </script>
 </body>
 </html>
